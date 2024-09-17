@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public class LexerTests {
-    // Testing commits
+    // Testing commits a
     @ParameterizedTest
     @MethodSource
     void testIdentifier(String test, String input, boolean success) {
