@@ -1,5 +1,5 @@
 package plc.project;
-
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -28,7 +28,19 @@ public final class Lexer {
      * whitespace where appropriate.
      */
     public List<Token> lex() {
-        throw new UnsupportedOperationException(); //TODO
+        int i = 0;
+        List<Token> statement = new ArrayList<>();
+        while (peek(".") || peek("\\s")) {
+            if (peek("[ \b\n\r\t]")) {
+                chars.advance();
+                chars.skip();
+            }
+            else {
+                statement.add(lexToken());
+                i++;
+            }
+        }
+        return statement;
     }
 
     /**
@@ -40,49 +52,161 @@ public final class Lexer {
      * by {@link #lex()}
      */
     public Token lexToken() {
-        throw new UnsupportedOperationException(); //TODO
+        if (peek("[A-Za-z_]")) {
+            return lexIdentifier();
+        }
+        else if (peek("[+-]", "[0-9]") || peek("[0-9]")){
+            return lexNumber();
+        }
+        else if (peek("'")){
+            return lexCharacter();
+        }
+        else if (peek("\"") || peek("\\\\", "\"")){
+            return lexString();
+        }
+        else {
+            return lexOperator();
+        }
     }
 
     public Token lexIdentifier() {
-        throw new UnsupportedOperationException(); //TODO
+        if(!peek("[A-Za-z_]")){
+            throw new UnsupportedOperationException();
+        }
+        match("[A-Za-z_]");
+        while(peek("[A-Za-z0-9_-]")){
+                match("[A-Za-z0-9_-]");
+        }
+        return chars.emit(Token.Type.IDENTIFIER);
     }
 
     public Token lexNumber() {
-        throw new UnsupportedOperationException(); //TODO
+        // Check for positive or negative sign
+        if (peek("[+-]")) {
+            match("[+-]");
+        }
+        // Check that if leading 0, it is followed by a decimal point
+        if (peek("0")) {
+            if (peek("0", "\\.")){
+                match("0", "\\.");
+            } else if (peek("0", "[0-9]")) {
+                throw new ParseException("Leading 0", chars.index);
+            }
+        }
+        // Match as many integers as there are
+        while (match("[0-9]")) ;
+
+        //Check for decimal again
+        if (peek("\\.")) {
+            match("\\.");
+            if (peek("[0-9]")) {
+                while (match("[0-9]")) ;
+                return chars.emit(Token.Type.DECIMAL);
+            } else {
+                throw new ParseException("Missing digits after decimal", chars.index);
+            }
+        }
+        return chars.emit(Token.Type.INTEGER);
     }
 
     public Token lexCharacter() {
-        throw new UnsupportedOperationException(); //TODO
+        match("'");
+        if (peek("'")){
+            throw new ParseException("Missing character", chars.index);
+        }
+        if (peek("\\\\")){
+            if (peek("\\\\", "[\\\\'\"bnrt]"))
+                match("\\\\", "[\\\\'\"bnrt]");
+            else {
+                throw new ParseException("Incorrect Escape", chars.index);
+            }
+        }
+        else { match("[^'\\\\\\n\\r]");}
+        if (peek("'")) {
+            match("'");
+            return chars.emit(Token.Type.CHARACTER);
+        }
+        throw new ParseException("Missing closing single quote", chars.index);
     }
 
     public Token lexString() {
-        throw new UnsupportedOperationException(); //TODO
+        if (peek("\"")) {
+            match("\"");
+        }
+        if (peek("\\\\","\"")) {
+            match("\\\\","\"");
+        }
+        while (peek(".")) {
+            if (peek("\"") || peek("\\\\","\"")){
+                break;
+            }
+            else if (peek("\\\\")) {
+                if (peek("\\\\", "[\\\\'bnrt]"))
+                    match("\\\\", "[\\\\'bnrt]");
+                else {
+                    throw new ParseException("Incorrect Escape", chars.index);
+                }
+            }
+            else  {
+                match(".");
+            }
+        }
+        if (peek("\"")){
+            match("\"");
+        }
+        else if (peek("\\\\","\"")) {
+            match("\\\\","\"");
+        }
+        else {
+            throw new ParseException("Missing closing double quote", chars.index);
+        }
+        return chars.emit(Token.Type.STRING);
     }
 
     public void lexEscape() {
-        throw new UnsupportedOperationException(); //TODO
+        if (peek("\\\\")){
+            chars.advance();
+            chars.skip();
+        }
+        else {
+            throw new ParseException("Incorrect Escape", chars.index);
+        }
     }
 
     public Token lexOperator() {
-        throw new UnsupportedOperationException(); //TODO
+        if(match("!","=") || match("=","=") || match("<","=") || match(">","=") || match("|","|") || match("&","&")) {
+            return chars.emit(Token.Type.OPERATOR);
+        } else if(match("([<>!=] '='?|(.))")) {
+            return chars.emit(Token.Type.OPERATOR);
+        }
+        throw new ParseException("Not a valid Operator", chars.index);
     }
-
     /**
      * Returns true if the next sequence of characters match the given patterns,
      * which should be a regex. For example, {@code peek("a", "b", "c")} would
      * return true if the next characters are {@code 'a', 'b', 'c'}.
      */
     public boolean peek(String... patterns) {
-        throw new UnsupportedOperationException(); //TODO (in Lecture)
+        for (int i = 0; i<patterns.length; i++){
+            if (!chars.has(i) || !String.valueOf(chars.get(i)).matches(patterns[i])){
+                return false;
+            }
+        }
+        return true;
     }
-
     /**
      * Returns true in the same way as {@link #peek(String...)}, but also
      * advances the character stream past all matched characters if peek returns
      * true. Hint - it's easiest to have this method simply call peek.
      */
     public boolean match(String... patterns) {
-        throw new UnsupportedOperationException(); //TODO (in Lecture)
+        boolean peek = peek(patterns);
+        if (peek) {
+            for (int i=0; i < patterns.length; i++){
+                chars.advance();
+            }
+        }
+        return peek;
     }
 
     /**
