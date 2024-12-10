@@ -23,6 +23,9 @@ final class ParserTests {
     @ParameterizedTest
     @MethodSource
     void testSource(String test, List<Token> tokens, Ast.Source expected) {
+        for(int i = 0; i < tokens.size(); i++){
+            System.out.print(tokens.get(i).getLiteral() +" ");
+        }
         test(tokens, expected, Parser::parseSource);
     }
 

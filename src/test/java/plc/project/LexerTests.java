@@ -37,7 +37,10 @@ public class LexerTests {
                 Arguments.of("Leading Zero", "01", false),
                 Arguments.of("Decimal", "123.456", false),
                 Arguments.of("Comma Separated", "1,234" ,false),
-                Arguments.of("Leading Zeros", "007", false)
+                Arguments.of("Leading Zeros", "007", false),
+                Arguments.of("Negative Zero", "-0.0", false),
+                Arguments.of("Negative Zero Again", "+0", false)
+
         );
     }
     @ParameterizedTest
@@ -99,13 +102,12 @@ public class LexerTests {
                 Arguments.of("Comparison", "!=", true),
                 Arguments.of("Space", " ", false),
                 Arguments.of("Tab", "\t", false),
-                Arguments.of("Symbol", "$", false),
+                Arguments.of("Symbol", "$", true),
                 Arguments.of("Remainder", "%", true),
-                Arguments.of("Unicode", "+", true),
+                Arguments.of("Unicode", "ρ", true),
                 Arguments.of("Plus Sign", "+", true),
-                Arguments.of("Plus Sign", "+", true),
-                Arguments.of("Plus Sign", "+", true),
-                Arguments.of("Plus Sign", "+", true)
+                Arguments.of("Or", "||", true),
+                Arguments.of("Form Feed", "␌", true)
         );
     }
     @ParameterizedTest

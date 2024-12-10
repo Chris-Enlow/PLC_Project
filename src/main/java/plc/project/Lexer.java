@@ -28,16 +28,14 @@ public final class Lexer {
      * whitespace where appropriate.
      */
     public List<Token> lex() {
-        int i = 0;
         List<Token> statement = new ArrayList<>();
-        while (peek(".") || peek("\\s")) {
+        while (chars.has(0)) {
             if (peek("[ \b\n\r\t]")) {
                 chars.advance();
                 chars.skip();
             }
             else {
                 statement.add(lexToken());
-                i++;
             }
         }
         return statement;
@@ -81,22 +79,30 @@ public final class Lexer {
     }
 
     public Token lexNumber() {
-        // Check for positive or negative sign
+        // Track if the number starts with a negative sign
+        boolean isNegative = false;
+
         if (peek("[+-]")) {
+            isNegative = peek("-");
             match("[+-]");
         }
-        // Check that if leading 0, it is followed by a decimal point
+
         if (peek("0")) {
-            if (peek("0", "\\.")){
-                match("0", "\\.");
-            } else if (peek("0", "[0-9]")) {
+            match("0");
+
+            if (!peek("[0-9]")) {
+                return chars.emit(Token.Type.INTEGER);
+            }
+
+            if (peek("[0-9]") && !peek("0", "\\.")) {
                 throw new ParseException("Leading 0", chars.index);
             }
         }
-        // Match as many integers as there are
+
+        // Match remaining digits
         while (match("[0-9]")) ;
 
-        //Check for decimal again
+        // Check for decimal
         if (peek("\\.")) {
             match("\\.");
             if (peek("[0-9]")) {
@@ -174,9 +180,11 @@ public final class Lexer {
     }
 
     public Token lexOperator() {
-        if(match("!","=") || match("=","=") || match("<","=") || match(">","=") || match("|","|") || match("&","&")) {
+        if (match("!","=") || match("=","=") || match("<","=") || match(">","=") ||
+                match("\\|","\\|") || match("&","&")) {
             return chars.emit(Token.Type.OPERATOR);
-        } else if(match("([<>!=] '='?|(.))")) {
+        }
+        else if (match("[^\\w\\s]")) {
             return chars.emit(Token.Type.OPERATOR);
         }
         throw new ParseException("Not a valid Operator", chars.index);

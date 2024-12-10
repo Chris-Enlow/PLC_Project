@@ -21,6 +21,7 @@ import java.util.Optional;
 public final class Parser {
 
     private final TokenStream tokens;
+    private boolean isForLoop = false;
 
     public Parser(List<Token> tokens) {
         this.tokens = new TokenStream(tokens);
@@ -34,9 +35,9 @@ public final class Parser {
             List<Ast.Field> fields = new ArrayList<>();
             List<Ast.Method> methods = new ArrayList<>();
             while (tokens.has(0)) {
-                if (match("LET")) {
+                if (peek("LET")) {
                     fields.add(parseField());
-                } else if (match("DEF")) {
+                } else if (peek("DEF")) {
                     methods.add(parseMethod());
                 }
             }
@@ -51,24 +52,37 @@ public final class Parser {
      * next tokens start a field, aka {@code LET}.
      */
     public Ast.Field parseField() throws ParseException {
-        // Expect the 'LET' keyword
+        match("LET");
         boolean constValue = false;
-        if(peek("CONST")){
+        if (peek("CONST")) {
             constValue = true;
             match("CONST");
         }
+
         if (!match(Token.Type.IDENTIFIER)) {
             throw error("Expected identifier.");
         }
         String name = tokens.get(-1).getLiteral();
-        Optional<Ast.Expression> temp = Optional.empty();
-        if (match("=")) {
-            temp = Optional.of(parseExpression());
+
+        if (!peek(":")) {
+            throw error("Expected colon `:`." + tokens.get(0));
         }
+        match(":");
+        if (!match(Token.Type.IDENTIFIER)) {
+            throw error("Expected type identifier.");
+        }
+        String type = tokens.get(-1).getLiteral();
+
+        Optional<Ast.Expression> expr = Optional.empty();
+        if (match("=")) {
+            expr = Optional.of(parseExpression());
+        }
+
         if (!match(";")) {
             throw error("Expected semicolon.");
         }
-        return new Ast.Statement.Field(name, constValue, temp);
+
+        return new Ast.Field(name, type, constValue, expr);
     }
 
     /**
@@ -76,13 +90,16 @@ public final class Parser {
      * next tokens start a method, aka {@code DEF}.
      */
     public Ast.Method parseMethod() throws ParseException {
+        match("DEF");
         if (!match(Token.Type.IDENTIFIER)) {
             throw error("Expected identifier.");
         }
         String name = tokens.get(-1).getLiteral();
 
-        // Parsing parameters
         List<String> parameters = new ArrayList<>();
+        List<String> parameterTypeNames = new ArrayList<>();
+        Optional<String> returnTypeName = Optional.of("Any");
+
         if (!match("(")) {
             throw error("Expected opening parenthesis `(`.");
         }
@@ -92,13 +109,20 @@ public final class Parser {
                     throw error("Expected parameter name.");
                 }
                 parameters.add(tokens.get(-1).getLiteral());
+                match(":");
+                if (!match(Token.Type.IDENTIFIER)){
+                    throw error("Expected parameter type");
+                }
+                parameterTypeNames.add(tokens.get(-1).getLiteral());
             } while (match(","));
         }
         if (!match(")")) {
             throw error("Expected closing parenthesis `)`.");
         }
-
-        // Parsing the method body
+        if (match(":")) {
+            match(Token.Type.IDENTIFIER);
+            returnTypeName = Optional.of(tokens.get(-1).getLiteral());
+        }
         if (!match("DO")) {
             throw error("Expected DO.");
         }
@@ -110,7 +134,7 @@ public final class Parser {
             throw error("Missing END.");
         }
 
-        return new Ast.Method(name, parameters, statements);    }
+        return new Ast.Method(name, parameters, parameterTypeNames, returnTypeName, statements);    }
 
     /**
      * Parses the {@code statement} rule and delegates to the necessary method.
@@ -137,7 +161,7 @@ public final class Parser {
             } else {
                 statement =  new Ast.Statement.Expression(ex);
             }
-            if (!match(";")) {
+            if (!match(";") && !isForLoop) {
                 throw error("Expected semicolon `;`");
             }
             return statement;
@@ -150,11 +174,16 @@ public final class Parser {
      * statement, aka {@code LET}.
      */
     public Ast.Statement.Declaration parseDeclarationStatement() throws ParseException {
+        Optional<String> typeName = Optional.empty();
         match("LET");
         if (!match(Token.Type.IDENTIFIER)) {
             throw error("Expected identifier.");
         }
         String name = tokens.get(-1).getLiteral();
+        if (match(":")) {
+            match(Token.Type.IDENTIFIER);
+            typeName = Optional.of(tokens.get(-1).getLiteral());
+        }
         Optional<Ast.Expression> temp = Optional.empty();
         if (match("=")) {
             temp = Optional.of(parseExpression());
@@ -162,7 +191,7 @@ public final class Parser {
         if (!match(";")) {
             throw error("Expected semicolon.");
         }
-        return new Ast.Statement.Declaration(name, temp);
+        return new Ast.Statement.Declaration(name, typeName, temp);
     }
 
     /**
@@ -204,22 +233,20 @@ public final class Parser {
      * {@code FOR}.
      */
     public Ast.Statement.For parseForStatement() throws ParseException {
+        match("FOR");
         Ast.Statement stmt1;
         Ast.Statement stmt2;
         match("(");
         stmt1 = parseStatement();
-        if (!match(";")){
-            throw error("Expected semicolon.");
-        }
+
         Ast.Expression condition = parseExpression();
         if (!match(";")){
-            throw error("Expected semicolon.");
+            throw error("Expected semicolon 2.");
         }
+        isForLoop = true;
         stmt2 = parseStatement();
-        if (!match(";")){
-            throw error("Expected semicolon.");
-        }
-
+        isForLoop = false;
+        match(")");
         List<Ast.Statement> statements = new ArrayList<>();
         while (!match("END") && tokens.has(0)) {
             statements.add(parseStatement());
@@ -263,7 +290,7 @@ public final class Parser {
         match("RETURN");
         Ast.Expression temp = parseExpression();
         if (!match(";")) {
-            throw error("Expected semicolon.");
+           throw error("Expected semicolon");
         }
         return new Ast.Statement.Return(temp);
     }
@@ -279,10 +306,10 @@ public final class Parser {
      * Parses the logical-expression rule, which handles "&&" and "||" operators.
      */
     public Ast.Expression parseLogicalExpression() throws ParseException {
-        Ast.Expression first = parseComparisonExpression();
+        Ast.Expression first = parseEqualityExpression();
         while (match("&&") || match("||")) {
             String type = tokens.get(-1).getLiteral();
-            Ast.Expression second = parseComparisonExpression();
+            Ast.Expression second = parseEqualityExpression();
             first = new Ast.Expression.Binary(type, first, second);
         }
         return first;
@@ -291,7 +318,7 @@ public final class Parser {
     /**
      * Parses the comparison-expression rule, which handles comparison operators like "<", ">", "==", "!=".
      */
-    public Ast.Expression parseComparisonExpression() throws ParseException {
+    public Ast.Expression parseEqualityExpression() throws ParseException {
         Ast.Expression first = parseAdditiveExpression();
         while (match("<") || match(">") || match("==") || match("!=")) {
             String operator = tokens.get(-1).getLiteral();
@@ -328,7 +355,6 @@ public final class Parser {
     }
     public Ast.Expression parseSecondaryExpression() throws ParseException {
         Ast.Expression first= parsePrimaryExpression();
-        // Loop to handle repeated field accesses or function calls
         while (match(".")) {
             if (!match(Token.Type.IDENTIFIER)) {
                 throw error("Expected identifier after `.`.");
@@ -346,7 +372,6 @@ public final class Parser {
                 }
                 first= new Ast.Expression.Function(Optional.of(first), identifier, arguments);
             } else {
-                // It's a field access
                 first= new Ast.Expression.Access(Optional.of(first), identifier);
             }
         }
@@ -376,7 +401,6 @@ public final class Parser {
         } else if (match(Token.Type.IDENTIFIER)) {
             String name = tokens.get(-1).getLiteral();
 
-            // Handle function calls
             if (match("(")) {
                 List<Ast.Expression> arguments = new ArrayList<>();
                 while (!match(")")) {
@@ -391,7 +415,6 @@ public final class Parser {
                 }
                 return new Ast.Expression.Function(Optional.empty(), name, arguments);
 
-                // Handle array access (which was already there)
             } else if (match("[")) {
                 Ast.Expression first= parseExpression();
                 if (!match("]")) {
@@ -408,7 +431,7 @@ public final class Parser {
             }
             return new Ast.Expression.Group(first);
         } else {
-            throw error("Invalid expression.");
+            throw error(tokens.get(0) + "Invalid expression.");
         }
     }
 
